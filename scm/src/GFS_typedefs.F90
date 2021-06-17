@@ -897,6 +897,7 @@ module GFS_typedefs
     logical              :: dspheat         !< flag for tke dissipative heating
     logical              :: hurr_pbl        !< flag for hurricane-specific options in PBL scheme
     logical              :: lheatstrg       !< flag for canopy heat storage parameterization
+    logical              :: lseaspray       !< flag for sea spray parameterization
     logical              :: cnvcld
     logical              :: random_clds     !< flag controls whether clouds are random
     logical              :: shal_cnv        !< flag for calling shallow convection
@@ -992,6 +993,7 @@ module GFS_typedefs
     real(kind=kind_phys) :: c1_deep         !< conversion parameter of detrainment from liquid water into grid-scale cloud water
     real(kind=kind_phys) :: betal_deep      !< fraction factor of downdraft air mass reaching ground surface over land
     real(kind=kind_phys) :: betas_deep      !< fraction factor of downdraft air mass reaching ground surface over sea
+    real(kind=kind_phys) :: evef            !< evaporation factor from convective rain
     real(kind=kind_phys) :: evfact_deep     !< evaporation factor from convective rain
     real(kind=kind_phys) :: evfactl_deep    !< evaporation factor from convective rain over land
     real(kind=kind_phys) :: pgcon_deep      !< reduction factor in momentum transport due to convection induced pressure gradient force
@@ -1057,15 +1059,13 @@ module GFS_typedefs
     real(kind=kind_phys) :: bl_dnfr         !< downdraft fraction in boundary layer mass flux scheme
 
 !--- parameters for canopy heat storage (CHS) parameterization
-    real(kind=kind_phys) :: z0fac           !< surface roughness fraction factor
-    real(kind=kind_phys) :: e0fac           !< latent heat flux fraction factor relative to sensible heat flux
-                                            !< e.g., e0fac=0.5 indicates that CHS for latent heat flux is 50% of that for
-                                            !< sensible heat flux
+    real(kind=kind_phys) :: h0facu          !< CHS factor for sensible heat flux in unstable surface layer                                       
+    real(kind=kind_phys) :: h0facs          !< CHS factor for sensible heat flux in stable surface layer                           
 
 !---cellular automata control parameters
     integer              :: nca             !< number of independent cellular automata
-    integer              :: nlives          !< cellular automata lifetime
-    integer              :: ncells          !< cellular automata finer grid
+    integer              :: tlives          !< cellular automata lifetime
+    integer              :: scells          !< cellular automata finer grid
     integer              :: nca_g           !< number of independent cellular automata
     integer              :: nlives_g        !< cellular automata lifetime
     integer              :: ncells_g        !< cellular automata finer grid
@@ -1078,7 +1078,8 @@ module GFS_typedefs
     logical              :: ca_smooth       !< switch for gaussian spatial filter
     integer              :: iseed_ca        !< seed for random number generation in ca scheme
     integer              :: nspinup         !< number of iterations to spin up the ca
-    real(kind=kind_phys) :: nthresh         !< threshold used for perturbed vertical velocity
+    real(kind=kind_phys) :: rcell           !< threshold used for CA scheme
+    real(kind=kind_phys) :: nthresh         !< threshold used for convection coupling
     real                 :: ca_amplitude    !< amplitude of ca trigger perturbation
     integer              :: nsmooth         !< number of passes through smoother
     logical              :: ca_closure      !< logical switch for ca on closure
@@ -1568,6 +1569,7 @@ module GFS_typedefs
     real (kind=kind_phys), pointer :: t02min  (:)    => null()   !< min hourly 2m T
     real (kind=kind_phys), pointer :: rh02max (:)    => null()   !< max hourly 2m RH
     real (kind=kind_phys), pointer :: rh02min (:)    => null()   !< min hourly 2m RH
+    real (kind=kind_phys), pointer :: pratemax(:)    => null()   !< max hourly precipitation rate
 !--- accumulated quantities for 3D diagnostics
     real (kind=kind_phys), pointer :: upd_mf (:,:)   => null()  !< instantaneous convective updraft mass flux
     real (kind=kind_phys), pointer :: dwn_mf (:,:)   => null()  !< instantaneous convective downdraft mass flux
@@ -1800,7 +1802,6 @@ module GFS_typedefs
     real (kind=kind_phys), pointer      :: ep1d_ice(:)        => null()  !<
     real (kind=kind_phys), pointer      :: ep1d_land(:)       => null()  !<
     real (kind=kind_phys), pointer      :: ep1d_water(:)      => null()  !<
-    real (kind=kind_phys), pointer      :: evapq(:)           => null()  !<
     real (kind=kind_phys), pointer      :: evap_ice(:)        => null()  !<
     real (kind=kind_phys), pointer      :: evap_land(:)       => null()  !<
     real (kind=kind_phys), pointer      :: evap_water(:)      => null()  !<
@@ -1846,7 +1847,7 @@ module GFS_typedefs
     real (kind=kind_phys), pointer      :: graupelmp(:)       => null()  !<
     real (kind=kind_phys), pointer      :: gwdcu(:,:)         => null()  !<
     real (kind=kind_phys), pointer      :: gwdcv(:,:)         => null()  !<
-    real (kind=kind_phys), pointer      :: hefac(:)           => null()  !<
+    real (kind=kind_phys), pointer      :: zvfun(:)           => null()  !<
     real (kind=kind_phys), pointer      :: hffac(:)           => null()  !<
     real (kind=kind_phys), pointer      :: hflxq(:)           => null()  !<
     real (kind=kind_phys), pointer      :: hflx_ice(:)        => null()  !<
@@ -3241,6 +3242,7 @@ module GFS_typedefs
     logical              :: dspheat        = .false.                  !< flag for tke dissipative heating
     logical              :: hurr_pbl       = .false.                  !< flag for hurricane-specific options in PBL scheme
     logical              :: lheatstrg      = .false.                  !< flag for canopy heat storage parameterization
+    logical              :: lseaspray      = .false.                  !< flag for sea spray parameterization
     logical              :: cnvcld         = .false.
     logical              :: random_clds    = .false.                  !< flag controls whether clouds are random
     logical              :: shal_cnv       = .false.                  !< flag for calling shallow convection
@@ -3319,11 +3321,13 @@ module GFS_typedefs
     real(kind=kind_phys) :: ral_ts         = 0.0d0           !< time scale for Rayleigh damping in days
 
 !--- mass flux deep convection
-    real(kind=kind_phys) :: clam_deep      = 0.1             !< c_e for deep convection (Han and Pan, 2011, eq(6))
+!   real(kind=kind_phys) :: clam_deep      = 0.1             !< c_e for deep convection (Han and Pan, 2011, eq(6))
+    real(kind=kind_phys) :: clam_deep      = 0.07            !< c_e for deep convection (Han and Pan, 2011, eq(6))
     real(kind=kind_phys) :: c0s_deep       = 0.002           !< convective rain conversion parameter
     real(kind=kind_phys) :: c1_deep        = 0.002           !< conversion parameter of detrainment from liquid water into grid-scale cloud water
-    real(kind=kind_phys) :: betal_deep     = 0.05            !< fraction factor of downdraft air mass reaching ground surface over land
-    real(kind=kind_phys) :: betas_deep     = 0.05            !< fraction factor of downdraft air mass reaching ground surface over sea
+    real(kind=kind_phys) :: betal_deep     = 0.01            !< fraction factor of downdraft air mass reaching ground surface over land
+    real(kind=kind_phys) :: betas_deep     = 0.01            !< fraction factor of downdraft air mass reaching ground surface over sea
+    real(kind=kind_phys) :: evef           = 0.09            !< evaporation factor from convective rain
     real(kind=kind_phys) :: evfact_deep    = 0.3             !< evaporation factor from convective rain
     real(kind=kind_phys) :: evfactl_deep   = 0.3             !< evaporation factor from convective rain over land
     real(kind=kind_phys) :: pgcon_deep     = 0.55            !< reduction factor in momentum transport due to convection induced pressure gradient force
@@ -3393,28 +3397,27 @@ module GFS_typedefs
     real(kind=kind_phys) :: bl_dnfr        = 0.1             !< downdraft fraction in boundary layer mass flux scheme
 
 !--- parameters for canopy heat storage (CHS) parameterization
-    real(kind=kind_phys) :: z0fac          = 0.3
-    real(kind=kind_phys) :: e0fac          = 0.5
-
+    real(kind=kind_phys) :: h0facu         = 0.25
+    real(kind=kind_phys) :: h0facs         = 1.0
 
 !---Cellular automaton options
     integer              :: nca            = 1
-    integer              :: ncells         = 5
-    integer              :: nlives         = 30
+    integer              :: scells         = 2600
+    integer              :: tlives         = 1800
     integer              :: nca_g          = 1
     integer              :: ncells_g       = 1
     integer              :: nlives_g       = 100
     real(kind=kind_phys) :: nfracseed      = 0.5
-    integer              :: nseed          = 100000
+    integer              :: nseed          = 1
     integer              :: nseed_g        = 100
-    integer              :: iseed_ca       = 0
+    integer              :: iseed_ca       = 1
     integer              :: nspinup        = 1
     logical              :: do_ca          = .false.
     logical              :: ca_sgs         = .false.
     logical              :: ca_global      = .false.
     logical              :: ca_smooth      = .false.
-    real(kind=kind_phys) :: nthresh        = 0.0
-    real                 :: ca_amplitude   = 500.
+    real(kind=kind_phys) :: rcell          = 0.72
+    real                 :: ca_amplitude   = 0.35
     integer              :: nsmooth        = 100
     logical              :: ca_closure     = .false.
     logical              :: ca_entr        = .false.
@@ -3515,7 +3518,7 @@ module GFS_typedefs
                                do_myjsfc, do_myjpbl,                                        &
                                hwrf_samfdeep, hwrf_samfshal,                                &
                                h2o_phys, pdfcld, shcnvcw, redrag, hybedmf, satmedmf,        &
-                               shinhong, do_ysu, acm, dspheat, lheatstrg, cnvcld,           &
+                               shinhong, do_ysu, acm, dspheat, lheatstrg, lseaspray, cnvcld,&
                                random_clds, shal_cnv, imfshalcnv, imfdeepcnv, isatmedmf,    &
                                do_deep, jcap,                                               &
                                cs_parm, flgmin, cgwf, ccwf, cdmbgwd, sup, ctei_rm, crtrh,   &
@@ -3529,7 +3532,7 @@ module GFS_typedefs
                                spec_adv, rhgrd, icloud,                                     &
                           !--- mass flux deep convection
                                clam_deep, c0s_deep, c1_deep, betal_deep,                    &
-                               betas_deep, evfact_deep, evfactl_deep, pgcon_deep,           &
+                               betas_deep, evef, evfact_deep, evfactl_deep, pgcon_deep,     &
                                asolfac_deep,                                                &
                           !--- mass flux shallow convection
                                clam_shal, c0s_shal, c1_shal, pgcon_shal, asolfac_shal,      &
@@ -3545,10 +3548,10 @@ module GFS_typedefs
                                xkzm_m, xkzm_h, xkzm_s, xkzminv, moninq_fac, dspfac,         &
                                bl_upfr, bl_dnfr,                                            &
                           !--- canopy heat storage parameterization
-                               z0fac, e0fac,                                                &
+                               h0facu, h0facs,                                              &
                           !--- cellular automata
-                               nca, ncells, nlives, nca_g, ncells_g, nlives_g, nfracseed,   &
-                               nseed, nseed_g, nthresh, do_ca,                              &
+                               nca, scells, tlives, nca_g, ncells_g, nlives_g, nfracseed,   &
+                               nseed, nseed_g, rcell, do_ca,                              &
                                ca_sgs, ca_global,iseed_ca,ca_smooth,                        &
                                nspinup,ca_amplitude,nsmooth,ca_closure,ca_entr,ca_trigger,  &
                           !--- IAU
@@ -4123,6 +4126,7 @@ module GFS_typedefs
     Model%dspheat           = dspheat
     Model%hurr_pbl          = hurr_pbl
     Model%lheatstrg         = lheatstrg
+    Model%lseaspray         = lseaspray
     Model%cnvcld            = cnvcld
     Model%random_clds       = random_clds
     Model%shal_cnv          = shal_cnv
@@ -4209,6 +4213,7 @@ module GFS_typedefs
     Model%c1_deep          = c1_deep
     Model%betal_deep       = betal_deep
     Model%betas_deep       = betas_deep
+    Model%evef             = evef
     Model%evfact_deep      = evfact_deep
     Model%evfactl_deep     = evfactl_deep
     Model%pgcon_deep       = pgcon_deep
@@ -4252,8 +4257,8 @@ module GFS_typedefs
     Model%bl_dnfr          = bl_dnfr
 
 !--- canopy heat storage parametrization
-    Model%z0fac            = z0fac
-    Model%e0fac            = e0fac
+    Model%h0facu           = h0facu
+    Model%h0facs           = h0facs
 
 !--- stochastic physics options
     ! do_sppt, do_shum, do_skeb and lndp_type are namelist variables in group
@@ -4272,8 +4277,8 @@ module GFS_typedefs
 
     !--- cellular automata options
     Model%nca              = nca
-    Model%ncells           = ncells
-    Model%nlives           = nlives
+    Model%scells           = scells
+    Model%tlives           = tlives
     Model%nca_g            = nca_g
     Model%ncells_g         = ncells_g
     Model%nlives_g         = nlives_g
@@ -4286,7 +4291,7 @@ module GFS_typedefs
     Model%iseed_ca         = iseed_ca
     Model%ca_smooth        = ca_smooth
     Model%nspinup          = nspinup
-    Model%nthresh          = nthresh
+    Model%rcell            = rcell
     Model%ca_amplitude     = ca_amplitude
     Model%nsmooth          = nsmooth
     Model%ca_closure       = ca_closure
@@ -5194,6 +5199,7 @@ module GFS_typedefs
       print *, ' acm               : ', Model%acm
       print *, ' dspheat           : ', Model%dspheat
       print *, ' lheatstrg         : ', Model%lheatstrg
+      print *, ' lseaspray         : ', Model%lseaspray
       print *, ' cnvcld            : ', Model%cnvcld
       print *, ' random_clds       : ', Model%random_clds
       print *, ' shal_cnv          : ', Model%shal_cnv
@@ -5244,6 +5250,7 @@ module GFS_typedefs
         print *, ' c1_deep           : ', Model%c1_deep
         print *, ' betal_deep        : ', Model%betal_deep
         print *, ' betas_deep        : ', Model%betas_deep
+        print *, ' evef              : ', Model%evef
         print *, ' evfact_deep       : ', Model%evfact_deep
         print *, ' evfactl_deep      : ', Model%evfactl_deep
         print *, ' pgcon_deep        : ', Model%pgcon_deep
@@ -5278,8 +5285,8 @@ module GFS_typedefs
       print *, ' bl_dnfr           : ', Model%bl_dnfr
       print *, ' '
       print *, 'parameters for canopy heat storage parametrization'
-      print *, ' z0fac             : ', Model%z0fac
-      print *, ' e0fac             : ', Model%e0fac
+      print *, ' h0facu            : ', Model%h0facu
+      print *, ' h0facs            : ', Model%h0facs
       print *, ' '
       print *, 'stochastic physics'
       print *, ' do_sppt           : ', Model%do_sppt
@@ -5294,8 +5301,8 @@ module GFS_typedefs
       print *, ' '
       print *, 'cellular automata'
       print *, ' nca               : ', Model%nca
-      print *, ' ncells            : ', Model%ncells
-      print *, ' nlives            : ', Model%nlives
+      print *, ' scells            : ', Model%scells
+      print *, ' tlives            : ', Model%tlives
       print *, ' nca_g             : ', Model%nca_g
       print *, ' ncells_g          : ', Model%ncells_g
       print *, ' nlives_g          : ', Model%nlives_g
@@ -5308,7 +5315,7 @@ module GFS_typedefs
       print *, ' iseed_ca          : ', Model%iseed_ca
       print *, ' ca_smooth         : ', Model%ca_smooth
       print *, ' nspinup           : ', Model%nspinup
-      print *, ' nthresh           : ', Model%nthresh
+      print *, ' rcell             : ', Model%rcell
       print *, ' ca_amplitude      : ', Model%ca_amplitude
       print *, ' nsmooth           : ', Model%nsmooth
       print *, ' ca_closure        : ', Model%ca_closure
@@ -5916,6 +5923,7 @@ module GFS_typedefs
     allocate (Diag%t02min(IM))
     allocate (Diag%rh02max(IM))
     allocate (Diag%rh02min(IM))
+    allocate (Diag%pratemax(IM))
 
     !--- MYNN variables:
     if (Model%do_mynnedmf) then
@@ -6217,6 +6225,7 @@ module GFS_typedefs
     Diag%t02min      = 999.
     Diag%rh02max     = -999.
     Diag%rh02min     = 999.
+    Diag%pratemax     = 0.
     set_totprcp      = .false.
     if (present(linit) ) set_totprcp = linit
     if (present(iauwindow_center) ) set_totprcp = iauwindow_center
@@ -6415,7 +6424,6 @@ module GFS_typedefs
     allocate (Interstitial%ep1d_ice        (IM))
     allocate (Interstitial%ep1d_land       (IM))
     allocate (Interstitial%ep1d_water      (IM))
-    allocate (Interstitial%evapq           (IM))
     allocate (Interstitial%evap_ice        (IM))
     allocate (Interstitial%evap_land       (IM))
     allocate (Interstitial%evap_water      (IM))
@@ -6457,7 +6465,7 @@ module GFS_typedefs
     allocate (Interstitial%gflx_water      (IM))
     allocate (Interstitial%gwdcu           (IM,Model%levs))
     allocate (Interstitial%gwdcv           (IM,Model%levs))
-    allocate (Interstitial%hefac           (IM))
+    allocate (Interstitial%zvfun           (IM))
     allocate (Interstitial%hffac           (IM))
     allocate (Interstitial%hflxq           (IM))
     allocate (Interstitial%hflx_ice        (IM))
@@ -7206,7 +7214,6 @@ module GFS_typedefs
     Interstitial%ep1d_ice        = huge
     Interstitial%ep1d_land       = huge
     Interstitial%ep1d_water      = huge
-    Interstitial%evapq           = clear_val
     Interstitial%evap_ice        = huge
     Interstitial%evap_land       = huge
     Interstitial%evap_water      = huge
@@ -7245,7 +7252,7 @@ module GFS_typedefs
     Interstitial%gflx_water      = clear_val
     Interstitial%gwdcu           = clear_val
     Interstitial%gwdcv           = clear_val
-    Interstitial%hefac           = clear_val
+    Interstitial%zvfun           = clear_val
     Interstitial%hffac           = clear_val
     Interstitial%hflxq           = clear_val
     Interstitial%hflx_ice        = huge
@@ -7559,7 +7566,6 @@ module GFS_typedefs
     write (0,*) 'sum(Interstitial%ep1d_ice        ) = ', sum(Interstitial%ep1d_ice        )
     write (0,*) 'sum(Interstitial%ep1d_land       ) = ', sum(Interstitial%ep1d_land       )
     write (0,*) 'sum(Interstitial%ep1d_water      ) = ', sum(Interstitial%ep1d_water      )
-    write (0,*) 'sum(Interstitial%evapq           ) = ', sum(Interstitial%evapq           )
     write (0,*) 'sum(Interstitial%evap_ice        ) = ', sum(Interstitial%evap_ice        )
     write (0,*) 'sum(Interstitial%evap_land       ) = ', sum(Interstitial%evap_land       )
     write (0,*) 'sum(Interstitial%evap_water      ) = ', sum(Interstitial%evap_water      )
@@ -7602,7 +7608,7 @@ module GFS_typedefs
     write (0,*) 'sum(Interstitial%gflx_water      ) = ', sum(Interstitial%gflx_water      )
     write (0,*) 'sum(Interstitial%gwdcu           ) = ', sum(Interstitial%gwdcu           )
     write (0,*) 'sum(Interstitial%gwdcv           ) = ', sum(Interstitial%gwdcv           )
-    write (0,*) 'sum(Interstitial%hefac           ) = ', sum(Interstitial%hefac           )
+    write (0,*) 'sum(Interstitial%zvfun           ) = ', sum(Interstitial%zvfun           )
     write (0,*) 'sum(Interstitial%hffac           ) = ', sum(Interstitial%hffac           )
     write (0,*) 'sum(Interstitial%hflxq           ) = ', sum(Interstitial%hflxq           )
     write (0,*) 'sum(Interstitial%hflx_ice        ) = ', sum(Interstitial%hflx_ice        )

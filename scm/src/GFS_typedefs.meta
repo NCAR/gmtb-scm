@@ -3873,6 +3873,12 @@
   units = flag
   dimensions = ()
   type = logical
+[lseaspray]
+  standard_name = flag_for_sea_spray
+  long_name = flag for sea spray parameterization
+  units = flag
+  dimensions = ()
+  type = logical
 [random_clds]
   standard_name = flag_for_random_clouds_for_RAS
   long_name = flag for using random clouds with the RAS scheme
@@ -4127,6 +4133,13 @@
   dimensions = ()
   type = real
   kind = kind_phys
+[evef]
+  standard_name = rain_evaporation_coefficient_convection
+  long_name = convective rain evaporation coefficient for convection
+  units = frac
+  dimensions = ()
+  type = real
+  kind = kind_phys
 [evfact_deep]
   standard_name = rain_evaporation_coefficient_deep_convection
   long_name = convective rain evaporation coefficient for deep convection
@@ -4303,51 +4316,20 @@
   dimensions = ()
   type = real
   kind = kind_phys
-[z0fac]
-  standard_name = surface_roughness_fraction_factor
-  long_name = surface roughness fraction for canopy heat storage parameterization
+[h0facu]
+  standard_name = canopy_heat_storage_factor_for_sensible_heat_flux_in_unstable_surface_layer
+  long_name = canopy heat storage factor for sensible heat flux in unstable surface layer
   units = none
   dimensions = ()
   type = real
   kind = kind_phys
-[e0fac]
-  standard_name = latent_heat_flux_fraction_factor_relative_to_sensible_heat_flux
-  long_name = latent heat flux fraction relative to sensible heat flux for canopy heat storage parameterization
+[h0facs]
+  standard_name = canopy_heat_storage_factor_for_sensible_heat_flux_in_stable_surface_layer
+  long_name = canopy heat storage factor for sensible heat flux in stable surface layer
   units = none
   dimensions = ()
   type = real
   kind = kind_phys
-[nca]
-  standard_name = number_of_independent_cellular_automata
-  long_name = number of independent cellular automata
-  units = count
-  dimensions = ()
-  type = integer
-[nlives]
-  standard_name = cellular_automata_lifetime
-  long_name = cellular automata lifetime
-  units = count
-  dimensions = ()
-  type = integer
-[ncells]
-  standard_name = cellular_automata_finer_grid
-  long_name = cellular automata finer grid
-  units = count
-  dimensions = ()
-  type = integer
-[nfracseed]
-  standard_name = cellular_automata_seed_probability
-  long_name = cellular automata seed probability
-  units = fraction
-  dimensions = ()
-  type = real
-  kind = kind_phys
-[nseed]
-  standard_name = cellular_automata_seed_frequency
-  long_name = cellular automata seed frequency in units of time steps
-  units = count
-  dimensions = ()
-  type = integer
 [do_ca]
   standard_name = flag_for_cellular_automata
   long_name = cellular automata main switch
@@ -4384,24 +4366,6 @@
   units = flag
   dimensions = ()
   type = logical
-[ca_smooth]
-  standard_name = flag_for_gaussian_spatial_filter
-  long_name = switch for gaussian spatial filter
-  units = flag
-  dimensions = ()
-  type = logical
-[iseed_ca]
-  standard_name = seed_for_random_number_generation_in_cellular_automata_scheme
-  long_name = seed for random number generation in ca scheme
-  units = none
-  dimensions = ()
-  type = integer
-[nspinup]
-  standard_name = number_of_iterations_to_spin_up_cellular_automata
-  long_name = number of iterations to spin up the ca
-  units = count
-  dimensions = ()
-  type = integer
 [nthresh]
   standard_name = threshold_for_perturbed_vertical_velocity
   long_name = threshold used for perturbed vertical velocity
@@ -7047,6 +7011,13 @@
   dimensions = (horizontal_loop_extent)
   type = real
   kind = kind_phys
+[pratemax]
+  standard_name = maximum_precipitation_rate_over_maximum_hourly_time_interval
+  long_name = maximum precipitation rate over maximum hourly time interval
+  units = mm h-1
+  dimensions = (horizontal_loop_extent)
+  type = real
+  kind = kind_phys
 [upd_mf]
   standard_name = cumulative_atmosphere_updraft_convective_mass_flux
   long_name = cumulative updraft mass flux
@@ -8416,13 +8387,6 @@
   dimensions = (horizontal_loop_extent)
   type = real
   kind = kind_phys
-[evapq]
-  standard_name = kinematic_surface_upward_latent_heat_flux_reduced_by_surface_roughness
-  long_name = kinematic surface upward latent heat flux reduced by surface roughness
-  units = kg kg-1 m s-1
-  dimensions = (horizontal_loop_extent)
-  type = real
-  kind = kind_phys
 [evap_water]
   standard_name = kinematic_surface_upward_latent_heat_flux_over_water
   long_name = kinematic surface upward latent heat flux over water
@@ -8841,9 +8805,9 @@
   dimensions = (horizontal_loop_extent,vertical_dimension)
   type = real
   kind = kind_phys
-[hefac]
-  standard_name = surface_upward_latent_heat_flux_reduction_factor
-  long_name = surface upward latent heat flux reduction factor from canopy heat storage
+[zvfun]
+  standard_name = function_of_surface_roughness_length_and_green_vegetation_fraction
+  long_name = function of surface roughness length and green vegetation fraction
   units = none
   dimensions = (horizontal_loop_extent)
   type = real
@@ -8856,8 +8820,8 @@
   type = real
   kind = kind_phys
 [hflxq]
-  standard_name = kinematic_surface_upward_sensible_heat_flux_reduced_by_surface_roughness
-  long_name = kinematic surface upward sensible heat flux reduced by surface roughness
+  standard_name = kinematic_surface_upward_sensible_heat_flux_reduced_by_surface_roughness_and_vegetation
+  long_name = kinematic surface upward sensible heat flux reduced by surface roughness and vegetation
   units = K m s-1
   dimensions = (horizontal_loop_extent)
   type = real
